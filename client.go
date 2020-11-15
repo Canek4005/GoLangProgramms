@@ -1,73 +1,106 @@
 package main
-import(
-  "fmt"
 
-  "net"
-  "encoding/json"
-  )
-  type User struct {
+import (
+	"fmt"
 
-      Name       string
-      Key        string
-  }
+	"encoding/json"
+	"net"
+)
+
+type User struct {
+	Id    int
+	Name  string
+	Score int
+}
+
+var adress string = ":4541"
 var user User
-func main(){
-for{
-  fmt.Print("Приветствую как тебя зовут?: ")
-  _, err := fmt.Scanln(&user.Name)
-  if err != nil {
-      fmt.Println("Некорректный ввод", err)
-      continue
-  }
-  break
-}
-for{
-  fmt.Print("Какой ключ Вы будете использовать?: ")
-  _, err := fmt.Scanln(&user.Key)
-  if err != nil {
-      fmt.Println("Некорректный ввод", err)
-      continue
-  }
-  break
+
+func main() {
+
+	conn, err := net.Dial("tcp", adress)
+
+	if err != nil {
+		fmt.Println(err)
+		fmt.Println("Отсутствует подключение к серверу")
+		return
+
+	} else {
+		interactionWithTheServer(conn)
+	}
+
 }
 
-conn, err := net.Dial("tcp", ":8888")
-catchError(err)
-defer conn.Close()
+//отправка данных о совершенной сессии
+func interactionWithTheServer(conn net.Conn) {
+	defer conn.Close()
+	//Читаю из памяти данные игрока!!!!!!!!!!!!!!!!!!!!!!!!!!
+	user.Id = 0
+	if user.Name == "" || user.Score == 0 {
+		for {
+			fmt.Print("Приветствую как тебя зовут?: ")
+			_, err := fmt.Scanln(&user.Name)
+			if err != nil {
+				fmt.Println("Некорректный ввод", err)
+				continue
+			}
+			break
+		}
+		for {
+			fmt.Print("Сколько очков Вы набрали?: ")
+			_, err := fmt.Scanln(&user.Score)
+			if err != nil {
+				fmt.Println("Некорректный ввод", err)
+				continue
+			}
+			break
+		}
+	}
+	json_data, err := json.Marshal(user)
+	catchError(err)
+	// формирую и отправляю дату
+	conn.Write(json_data)
+	//
+	fmt.Print("Ожидание подключения...")
+	// принимаю дату
+	buff := make([]byte, 1024)
+	n, err := conn.Read(buff)
 
-json_data, err1 := json.Marshal(user)
-catchError(err1)
+	fmt.Println(string(buff[0:n]))
 
-conn.Write(json_data)
-fmt.Print("Ожидание подключения...")
-buff := make([]byte, 1024)
-n, err := conn.Read(buff)
-
-fmt.Println("  ",string(buff[0:n]))
-  for{
-      go sendMessage(conn)
-      buff := make([]byte, 1024)
-      n, err := conn.Read(buff)
-      if err !=nil{ break}
-      fmt.Println("Получено сообщение :",string(buff[0:n]))
-
-  }
-  }
-  func sendMessage(conn net.Conn){
-    for{
-      var source string
-      _, err := fmt.Scanln(&source)
-      if err != nil {
-          fmt.Println("Некорректный ввод", err)
-          continue
-      }
-      conn.Write([]byte(source))
-
-  }
 }
-  func catchError(err error){
-    if err != nil {
-        fmt.Println(err)
-        return
-    }
-  }
+
+//запрос на таблицу
+func queryTable() {
+	//подключение
+	conn, err := net.Dial("tcp", adress)
+	catchError(err)
+	defer conn.Close()
+	//запрос на таблицу
+	request := User{0, "0", 2813308004}
+	data_json, err := json.Marshal(request)
+	conn.Write(data_json)
+	//получение таблицы и ее обработка
+	var data_received []byte
+	data_received = make([]byte, 1024*4)
+	table := []User{}
+	for {
+		n, err := conn.Read(data_received)
+		catchError(err)
+		if err := json.Unmarshal(data_received[0:n], &table); err != nil {
+			fmt.Println(err)
+			return
+		}
+
+	}
+	// результат функции
+	fmt.Print(table)
+}
+
+//обработка ошибок
+func catchError(err error) {
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
