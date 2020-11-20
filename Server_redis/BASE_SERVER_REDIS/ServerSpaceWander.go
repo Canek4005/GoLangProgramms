@@ -1,16 +1,15 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-redis/redis"
 )
 
 type User struct {
-	Id    int
 	Name  string
 	Score int
 }
@@ -19,11 +18,14 @@ var u User
 
 func main() {
 	// подключение БД
-	DB, err := sql.Open("mysql", "root:2813308004Sesh@/SpaceWander")
-	catchError(err)
-	defer DB.Close()
+	DB := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
 	//on Server
-	listener, err := net.Listen("tcp", "127.0.0.1:8887")
+	listener, err := net.Listen("tcp", ":1480")
 	catchError(err)
 	defer listener.Close()
 	//
@@ -54,11 +56,11 @@ func main() {
 		case 281330800:
 			sendTable(conn, DB)
 
-		//запрос на подключение и прием данныхы
+		//запрос на подключение и прием данных
 		default:
 			fmt.Println("Подключен :", u.Name)
 			fmt.Println("Его очки  :", u.Score)
-			go updateBase(u.Id, u.Name, u.Score, DB)
+			go updateBase(u.Name, u.Score, DB)
 			go handleConnection(conn)
 
 		}
@@ -74,64 +76,70 @@ func handleConnection(conn net.Conn) {
 
 	conn.Close()
 }
-func updateBase(Id int, Name string, Score int, DB *sql.DB) {
-	//загрузка данных из БД
-	rows, err := DB.Query("select * from SpaceWander.scoreboard")
-	catchError(err)
-	u := []User{}
-	for rows.Next() {
-		s := User{}
-		err := rows.Scan(&s.Id, &s.Name, &s.Score)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		u = append(u, s)
-	}
-	// пробегаю по массиву и проверяю есть ли это имя
-	find := true
-	score := true
-	for _, p := range u {
+func updateBase(Name string, Score int, DB *redis.Client) {
 
-		if p.Name == Name {
-			find = false
+	// ищу имя в БД
 
-			if p.Score < Score {
-				score = false
-			}
-		}
-	}
+	isFind, _ := DB.HExists("SpaceWander", Name).Result()
+
 	// добавление нового пользователя
-	if find {
-		_, err := DB.Exec("insert into SpaceWander.scoreboard (Id, Name, Score) values (?, ?, ?)",
-			Id, Name, Score)
-		catchError(err)
+	if !isFind {
+		DB.HSet("SpaceWander", Name, Score)
 	}
 	// обновление данных очков
-	if !find && !score {
-		_, err := DB.Exec("update SpaceWander.scoreboard set Score = ? where Name = ?", Score, Name)
-		catchError((err))
+	if isFind {
+		val, _ := DB.HGet("SpaceWander", Name).Result()
+		value, _ := strconv.Atoi(val)
+		if value < Score {
+
+			DB.HSet("SpaceWander", Name, Score)
+		}
 	}
 
-	//
 }
 
 //отправка таблицы
-func sendTable(conn net.Conn, DB *sql.DB) {
+func sendTable(conn net.Conn, DB *redis.Client) {
 	defer conn.Close()
-	//получение строки БД
-	raws, err := DB.Query("select * from SpaceWander.scoreboard")
-	catchError(err)
-	users := []User{}
-	//обработка строки БД
-	for raws.Next() {
-		u := User{}
-		err := raws.Scan(&u.Id, &u.Name, &u.Score)
-		catchError(err)
-		users = append(users, u)
+
+	var users []User
+	rows, err := DB.HGetAll("SpaceWander").Result()
+	if err != nil {
+		fmt.Print(err)
+	}
+
+	i := 1
+	for r, t := range rows {
+		var p User
+		p.Name = r
+		p.Score, _ = strconv.Atoi(t)
+		fmt.Println(r, "   ", t)
+		i += 1
+		users = append(users, p)
+	}
+	// Сортировка пользователей
+
+	var k User
+	for i := 0; i < len(users); i++ {
+		for j := 0; j < len(users)-1; j++ {
+			if users[j].Score < users[j+1].Score {
+				k = users[j]
+				users[j] = users[j+1]
+				users[j+1] = k
+			}
+		}
+	}
+	fmt.Println(users)
+	// отправляю первых 9 человек
+	var cutUsers []User
+	if len(users) > 9 {
+		cutUsers = users[:9]
+
+	} else {
+		cutUsers = users
 	}
 	//Отправка БД пользователю
-	data_json, err := json.Marshal(users)
+	data_json, err := json.Marshal(cutUsers)
 	conn.Write(data_json)
 	fmt.Println("Отправил таблицу")
 	fmt.Println(users)

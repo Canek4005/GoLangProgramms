@@ -13,7 +13,7 @@ type User struct {
 	Score int
 }
 
-var adress string = ":4541"
+var adress string = ":14880"
 var user User
 
 func main() {
