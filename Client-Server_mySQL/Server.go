@@ -19,7 +19,7 @@ var u User
 
 func main() {
 	// подключение БД
-	DB, err := sql.Open("mysql", "root:2813308004Sesh@/SpaceWander")
+	DB, err := sql.Open("mysql", "root:***********@/SpaceWander")
 	catchError(err)
 	defer DB.Close()
 	//on Server
